@@ -169,17 +169,39 @@ const FEEDS = [
   { key:'andrej', label:'Andrej Karpathy', color:'var(--andrej)', url:'https://karpathy.github.io/feed.xml'  },
   { key:'peter',  label:'Peter Steipete',  color:'var(--peter)',  url:'https://steipete.me/feed.xml'         },
 ];
-const PROXY = 'https://api.allorigins.win/get?url=';
+const PROXIES = [
+  url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+  url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+  url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+];
 
 let all=[], filtered=[], pages=[], cur=0, filterKey='all';
 let tx=0, ty=0, turning=false;
 
 // ── FETCH ──
+async function fetchWithProxy(url) {
+  for (const makeProxy of PROXIES) {
+    try {
+      const proxyUrl = makeProxy(url);
+      const r = await fetch(proxyUrl, {signal:AbortSignal.timeout(10000)});
+      if (!r.ok) continue;
+      const text = await r.text();
+      // allorigins returns JSON {contents:...}, others return raw
+      try {
+        const j = JSON.parse(text);
+        if (j.contents) return j.contents;
+      } catch(e){}
+      return text;
+    } catch(e){ continue; }
+  }
+  return null;
+}
+
 async function fetchFeed(f) {
   try {
-    const r = await fetch(PROXY+encodeURIComponent(f.url), {signal:AbortSignal.timeout(12000)});
-    const d = await r.json();
-    return parse(d.contents, f);
+    const xml = await fetchWithProxy(f.url);
+    if (!xml) return [];
+    return parse(xml, f);
   } catch(e){ return []; }
 }
 function parse(xml, f) {
